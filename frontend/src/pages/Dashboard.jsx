@@ -203,12 +203,24 @@ export default function Dashboard() {
                   <div className="text-xs text-gray-400">{new Date(r.created_at).toLocaleString()}</div>
                 </div>
                 <div className="flex gap-3">
-                  <a
-                    href={`/api/resumes/${r.id}/download`}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const resp = await client.get(`/resumes/${r.id}/download`, { responseType: 'blob' })
+                        const url = window.URL.createObjectURL(resp.data)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = `${r.company}_${r.job_title}.docx`.replace(/[^a-zA-Z0-9_.-]/g, '_')
+                        a.click()
+                        window.URL.revokeObjectURL(url)
+                      } catch (err) {
+                        alert('Download failed')
+                      }
+                    }}
                     className="bg-gray-900 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-gray-800"
                   >
                     Download
-                  </a>
+                  </button>
                   {r.google_drive_url && (
                     <a
                       href={r.google_drive_url}
