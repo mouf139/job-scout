@@ -10,6 +10,7 @@ export default function Dashboard() {
   const [jobs, setJobs] = useState([])
   const [stats, setStats] = useState(null)
   const [selected, setSelected] = useState(new Set())
+  const [resumes, setResumes] = useState([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
 
@@ -23,9 +24,14 @@ export default function Dashboard() {
 
   async function loadData() {
     try {
-      const [jobsData, statsData] = await Promise.all([getJobs(), getDashboardStats()])
+      const [jobsData, statsData, resumesData] = await Promise.all([
+        getJobs(),
+        getDashboardStats(),
+        client.get('/resumes/').then(r => r.data),
+      ])
       setJobs(jobsData)
       setStats(statsData)
+      setResumes(resumesData)
     } catch (err) {
       console.error('Failed to load dashboard data', err)
     } finally {
@@ -48,8 +54,12 @@ export default function Dashboard() {
     try {
       await selectJobs([...selected])
       const { data } = await client.post('/resumes/generate', { job_listing_ids: [...selected] })
-      alert(data.message)
+      alert(data.message + ' Resumes will appear below shortly.')
       setSelected(new Set())
+      setTimeout(async () => {
+        const r = await client.get('/resumes/')
+        setResumes(r.data)
+      }, 15000)
     } catch (err) {
       alert('Failed to generate resumes')
     } finally {
@@ -177,6 +187,44 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* My Resumes */}
+      {resumes.length > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h2 className="text-lg font-medium">My Tailored Resumes</h2>
+          </div>
+          <div className="divide-y divide-gray-200">
+            {resumes.map((r) => (
+              <div key={r.id} className="px-4 py-3 flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-sm">{r.job_title}</div>
+                  <div className="text-sm text-gray-500">{r.company}</div>
+                  <div className="text-xs text-gray-400">{new Date(r.created_at).toLocaleString()}</div>
+                </div>
+                <div className="flex gap-3">
+                  <a
+                    href={`/api/resumes/${r.id}/download`}
+                    className="bg-gray-900 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-gray-800"
+                  >
+                    Download
+                  </a>
+                  {r.google_drive_url && (
+                    <a
+                      href={r.google_drive_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:text-blue-800 self-center"
+                    >
+                      Google Drive
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
