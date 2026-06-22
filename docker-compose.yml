@@ -1,0 +1,108 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jobscout}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobscout_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-jobscout}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobscout}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+      - resume_uploads:/app/uploads
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jobscout}:${POSTGRES_PASSWORD:-jobscout_dev}@postgres:5432/${POSTGRES_DB:-jobscout}
+      DATABASE_URL_SYNC: postgresql://${POSTGRES_USER:-jobscout}:${POSTGRES_PASSWORD:-jobscout_dev}@postgres:5432/${POSTGRES_DB:-jobscout}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SERPAPI_KEY: ${SERPAPI_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REFRESH_TOKEN: ${GOOGLE_REFRESH_TOKEN:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    volumes:
+      - ./backend:/app
+      - resume_uploads:/app/uploads
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jobscout}:${POSTGRES_PASSWORD:-jobscout_dev}@postgres:5432/${POSTGRES_DB:-jobscout}
+      DATABASE_URL_SYNC: postgresql://${POSTGRES_USER:-jobscout}:${POSTGRES_PASSWORD:-jobscout_dev}@postgres:5432/${POSTGRES_DB:-jobscout}
+      REDIS_URL: redis://redis:6379/0
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SERPAPI_KEY: ${SERPAPI_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REFRESH_TOKEN: ${GOOGLE_REFRESH_TOKEN:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jobscout}:${POSTGRES_PASSWORD:-jobscout_dev}@postgres:5432/${POSTGRES_DB:-jobscout}
+      DATABASE_URL_SYNC: postgresql://${POSTGRES_USER:-jobscout}:${POSTGRES_PASSWORD:-jobscout_dev}@postgres:5432/${POSTGRES_DB:-jobscout}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  resume_uploads:
